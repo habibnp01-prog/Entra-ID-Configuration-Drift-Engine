@@ -3,7 +3,7 @@ function Invoke-DriftRemediation {
     [OutputType([PSCustomObject])]
     param(
         [Parameter(Mandatory)] $Plan,
-        [switch]$Confirm
+        [switch]$Apply
     )
 
     $results = @()
@@ -27,9 +27,9 @@ function Invoke-DriftRemediation {
             continue
         }
 
-        if (-not $Confirm) {
+        if (-not $Apply) {
             $result.Skipped = $true
-            $result.Reason  = "Not confirmed. Re-run with -Confirm to apply."
+            $result.Reason  = "Not applied. Re-run with -Apply to execute."
             $results += $result
             continue
         }
@@ -68,7 +68,7 @@ function Invoke-DriftRemediation {
 
     [PSCustomObject]@{
         AppliedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
-        Confirmed    = [bool]$Confirm
+        Applied      = [bool]$Apply
         Total        = $results.Count
         Performed    = @($results | Where-Object { $_.Performed }).Count
         Verified     = @($results | Where-Object { $_.VerifiedAtUtc }).Count

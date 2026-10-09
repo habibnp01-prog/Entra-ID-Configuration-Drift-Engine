@@ -44,7 +44,7 @@ Describe "New-DriftRemediationPlan" {
 }
 
 Describe "Invoke-DriftRemediation safety" {
-    It "skips when -Confirm is not passed" {
+    It "skips when -Apply is not passed" {
         $plan = New-DriftRemediationPlan -Findings @(New-Finding)
         $result = Invoke-DriftRemediation -Plan $plan
         $result.Performed | Should -Be 0
@@ -52,7 +52,7 @@ Describe "Invoke-DriftRemediation safety" {
     }
     It "reports WhatIf without performing when -WhatIf is passed" {
         $plan = New-DriftRemediationPlan -Findings @(New-Finding)
-        $result = Invoke-DriftRemediation -Plan $plan -Confirm -WhatIf
+        $result = Invoke-DriftRemediation -Plan $plan -Apply -WhatIf
         $result.Performed | Should -Be 0
         ($result.Results | Where-Object { $_.Reason -match "WhatIf" }) | Should -Not -BeNullOrEmpty
     }
