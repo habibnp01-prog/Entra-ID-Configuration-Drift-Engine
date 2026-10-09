@@ -12,7 +12,8 @@ param(
     [datetime]$Since,
     [switch]$WhatIf,
     [switch]$PassThru,
-    [switch]$Quiet
+    [switch]$Quiet,
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,9 +24,14 @@ function Show-EngineBanner {
     Write-Host ""
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host "  Entra-ID Configuration Drift Engine" -ForegroundColor Cyan
-    Write-Host ("  v0.1.0  |  Mode: {0}" -f $Mode) -ForegroundColor Cyan
+    Write-Host ("  v0.2.0  |  Mode: {0}" -f $Mode) -ForegroundColor Cyan
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host ""
+}
+
+function Get-Config {
+    $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+    return $cfg
 }
 
 function Invoke-ModeValidate {
@@ -56,18 +62,61 @@ function Invoke-ModeValidate {
 function Invoke-ModeTest {
     Write-DriftLog -Message "Running Pester tests..." -Level Info -Component "Test"
     $testsPath = Join-Path $root "Tests"
-    if (-not (Test-Path $testsPath)) { throw ("Tests directory not found: {0}" -f $testsPath) }
     $result = Invoke-Pester -Path $testsPath -Output Detailed -PassThru
     Write-DriftLog -Message ("Tests: {0} passed, {1} failed" -f $result.PassedCount, $result.FailedCount) -Level Info -Component "Test"
     if ($result.FailedCount -gt 0) { throw ("{0} test(s) failed." -f $result.FailedCount) }
     return [PSCustomObject]@{ Mode = "Test"; Passed = $result.PassedCount; Failed = $result.FailedCount }
 }
 
+function Invoke-ModeCollect {
+    $cfg = Get-Config
+    Write-DriftLog -Message "[1/4] Loading configuration..." -Level Info -Component "Collect"
+
+    $tenant = if ($TenantId) { $TenantId } else { $cfg.tenant.tenantId }
+    if (-not $tenant -or $tenant -like "REPLACE*") { throw "Set tenant.tenantId in Config/EngineConfig.json or pass -TenantId" }
+    if (-not $cfg.tenant.clientId -or $cfg.tenant.clientId -like "REPLACE*") { throw "Set tenant.clientId in Config/EngineConfig.json" }
+    if (-not $cfg.tenant.certificateThumbprint -or $cfg.tenant.certificateThumbprint -like "REPLACE*") { throw "Set tenant.certificateThumbprint in Config/EngineConfig.json" }
+
+    Write-DriftLog -Message "[2/4] Authenticating..." -Level Info -Component "Collect"
+    Connect-DriftGraph -TenantId $tenant -ClientId $cfg.tenant.clientId -CertificateThumbprint $cfg.tenant.certificateThumbprint | Out-Null
+
+    Write-DriftLog -Message "[3/4] Collecting resources..." -Level Info -Component "Collect"
+    $rawPolicies = Get-DriftCAPolicies
+    $normalized = @($rawPolicies | ConvertTo-DriftNormalizedResource -ResourceType "ConditionalAccessPolicy")
+    Write-DriftLog -Message ("Normalized {0} resources." -f $normalized.Count) -Level Success -Component "Collect"
+
+    Write-DriftLog -Message "[4/4] Writing snapshot..." -Level Info -Component "Collect"
+    $snapshot = New-DriftSnapshot -Resources $normalized -TenantId $tenant
+    $snapDir = Join-Path $root "Reports/JSON"
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $snapPath = Join-Path $snapDir ("snapshot-{0}.json" -f $timestamp)
+    Export-DriftSnapshot -Snapshot $snapshot -OutputPath $snapPath | Out-Null
+
+    Disconnect-DriftGraph | Out-Null
+    return [PSCustomObject]@{ Mode = "Collect"; SnapshotPath = $snapPath; Resources = $normalized.Count }
+}
+
+function Invoke-ModeBaseline {
+    if (-not $BaselinePath) {
+        $snapDir = Join-Path $root "Reports/JSON"
+        $latest = Get-ChildItem -Path $snapDir -Filter "snapshot-*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if (-not $latest) { throw "No snapshot found. Run -Mode Collect first, or pass -BaselinePath pointing to a snapshot." }
+        $BaselinePath = $latest.FullName
+        Write-DriftLog -Message ("Using latest snapshot: {0}" -f $BaselinePath) -Level Info -Component "Baseline"
+    }
+
+    $baselineDir = Join-Path $root "Baselines"
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $baselineOut = Join-Path $baselineDir ("baseline-{0}.json" -f $timestamp)
+
+    $path = New-DriftBaseline -SnapshotPath $BaselinePath -BaselinePath $baselineOut -Force:$Force
+    return [PSCustomObject]@{ Mode = "Baseline"; BaselinePath = $path }
+}
+
 function Invoke-ModeNotImplemented {
     param([string]$ModeName, [string]$Reason)
     Write-DriftLog -Message ("Mode {0} is not implemented yet." -f $ModeName) -Level Warning -Component $ModeName
     Write-DriftLog -Message ("Reason: {0}" -f $Reason) -Level Info -Component $ModeName
-    Write-DriftLog -Message "This will be delivered in a later phase." -Level Info -Component $ModeName
     return [PSCustomObject]@{ Mode = $ModeName; Status = "NotImplemented"; Reason = $Reason }
 }
 
@@ -77,14 +126,14 @@ Show-EngineBanner
 $result = switch ($Mode) {
     "Validate"     { Invoke-ModeValidate }
     "Test"         { Invoke-ModeTest }
-    "Collect"      { Invoke-ModeNotImplemented -ModeName "Collect"     -Reason "Requires Graph authentication and collector modules (Phase 2)." }
-    "Baseline"     { Invoke-ModeNotImplemented -ModeName "Baseline"    -Reason "Requires snapshot engine (Phase 2)." }
-    "Assess"       { Invoke-ModeNotImplemented -ModeName "Assess"      -Reason "Requires drift comparison engine (Phase 3)." }
-    "PolicyCheck"  { Invoke-ModeNotImplemented -ModeName "PolicyCheck" -Reason "Requires policy engine (Phase 4)." }
-    "History"      { Invoke-ModeNotImplemented -ModeName "History"     -Reason "Requires history storage (Phase 6)." }
-    "Report"       { Invoke-ModeNotImplemented -ModeName "Report"      -Reason "Requires reporting modules (Phase 6)." }
-    "Plan"         { Invoke-ModeNotImplemented -ModeName "Plan"        -Reason "Requires remediation engine (Phase 7)." }
-    "All"          { Invoke-ModeNotImplemented -ModeName "All"         -Reason "Composite mode not available until Phases 2-6 complete." }
+    "Collect"      { Invoke-ModeCollect }
+    "Baseline"     { Invoke-ModeBaseline }
+    "Assess"       { Invoke-ModeNotImplemented -ModeName "Assess"      -Reason "Drift comparison engine arrives in Phase 3." }
+    "PolicyCheck"  { Invoke-ModeNotImplemented -ModeName "PolicyCheck" -Reason "Policy engine arrives in Phase 4." }
+    "History"      { Invoke-ModeNotImplemented -ModeName "History"     -Reason "History storage arrives in Phase 6." }
+    "Report"       { Invoke-ModeNotImplemented -ModeName "Report"      -Reason "Reporting arrives in Phase 6." }
+    "Plan"         { Invoke-ModeNotImplemented -ModeName "Plan"        -Reason "Remediation arrives in Phase 7." }
+    "All"          { Invoke-ModeNotImplemented -ModeName "All"         -Reason "Composite mode available after Phase 6." }
 }
 
 if ($PassThru) { return $result }
