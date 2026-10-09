@@ -239,7 +239,6 @@ function Invoke-ModePolicyCheck {
     return [PSCustomObject]@{ Mode = "PolicyCheck"; ReportPath = $outFile; FindingCount = $result.FindingCount }
 }
 function Invoke-ModeReport {
-    # Find latest assessment or policycheck
     $jsonDir = Join-Path $root "Reports/JSON"
     $latestAssessment = Get-ChildItem -Path $jsonDir -Filter "assessment-*.json" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     $latestPolicy    = Get-ChildItem -Path $jsonDir -Filter "policycheck-*.json" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -260,7 +259,7 @@ function Invoke-ModeReport {
     }
 
     if ($findings.Count -eq 0) {
-        Write-DriftLog -Message "No findings to report. Run -Mode Assess or -Mode PolicyCheck first." -Level Warning -Component "Report"
+        Write-DriftLog -Message "No findings to report." -Level Warning -Component "Report"
     }
 
     $csvPath  = Join-Path $root ("Reports/CSV/drift-findings-{0}.csv"  -f (Get-Date -Format "yyyyMMdd-HHmmss"))
@@ -281,30 +280,6 @@ function Invoke-ModeReport {
         HTML         = $htmlPath
         HistoryPath  = $histPath
     }
-}
-function Invoke-ModePlan {
-    $jsonDir = Join-Path $root "Reports/JSON"
-    $latestAssessment = Get-ChildItem -Path $jsonDir -Filter "assessment-*.json" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    $latestPolicy    = Get-ChildItem -Path $jsonDir -Filter "policycheck-*.json" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-
-    $findings = @()
-    if ($latestAssessment) { $findings += @((Get-Content $latestAssessment.FullName -Raw | ConvertFrom-Json).Findings) }
-    if ($latestPolicy)     { $findings += @((Get-Content $latestPolicy.FullName -Raw | ConvertFrom-Json).Findings) }
-
-    if ($findings.Count -eq 0) {
-        Write-DriftLog -Message "No findings. Run -Mode Assess or -Mode PolicyCheck first." -Level Warning -Component "Plan"
-    }
-
-    $plan = New-DriftRemediationPlan -Findings $findings
-
-    $outDir = Join-Path $root "Reports/JSON"
-    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $outFile = Join-Path $outDir ("remediation-plan-{0}.json" -f $timestamp)
-    $plan | ConvertTo-Json -Depth 30 | Set-Content -Path $outFile -Encoding UTF8
-    Write-DriftLog -Message ("Remediation plan written: {0}" -f $outFile) -Level Success -Component "Plan"
-    Write-DriftLog -Message ("  {0} action(s): {1} auto, {2} manual" -f $plan.ActionCount, $plan.AutoCount, $plan.ManualCount) -Level Info -Component "Plan"
-
-    return [PSCustomObject]@{ Mode = "Plan"; PlanPath = $outFile; ActionCount = $plan.ActionCount }
 }
 function Invoke-ModeNotImplemented {
     param([string]$ModeName, [string]$Reason)
