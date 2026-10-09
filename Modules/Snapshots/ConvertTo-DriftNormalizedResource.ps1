@@ -7,6 +7,8 @@ function ConvertTo-DriftNormalizedResource {
     )
 
     process {
+        if ($null -eq $Resource) { return }
+
         $id = if ($Resource.Id) { $Resource.Id } elseif ($Resource.id) { $Resource.id } else { $null }
         $name = if ($Resource.DisplayName) { $Resource.DisplayName } elseif ($Resource.displayName) { $Resource.displayName } else { $null }
 

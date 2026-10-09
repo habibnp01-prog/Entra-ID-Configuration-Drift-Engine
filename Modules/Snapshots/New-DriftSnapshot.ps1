@@ -2,7 +2,7 @@ function New-DriftSnapshot {
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
     param(
-        [Parameter(Mandatory)] [object[]]$Resources,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]]$Resources = @(),
         [Parameter(Mandatory)] [string]$TenantId,
         [string]$EngineVersion = "0.2.0"
     )
