@@ -1,0 +1,63 @@
+name: Scheduled Drift Check
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  drift:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install modules
+        shell: pwsh
+        run: |
+          Install-Module Pester -MinimumVersion 5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          Install-Module Microsoft.Graph -MinimumVersion 2.0.0 -Force -Scope CurrentUser -AllowClobber
+
+      - name: Restore certificate
+        shell: pwsh
+        env:
+          CERT_B64: ${{ secrets.ENTRA_DRIFT_CERT_B64 }}
+          CERT_PWD: ${{ secrets.ENTRA_DRIFT_CERT_PWD }}
+        run: |
+          if (-not $env:CERT_B64) { Write-Host "No cert secret"; exit 1 }
+          $bytes = [Convert]::FromBase64String($env:CERT_B64)
+          $pfx = "$env:TEMP\drift.pfx"
+          [IO.File]::WriteAllBytes($pfx, $bytes)
+          $secure = ConvertTo-SecureString $env:CERT_PWD -AsPlainText -Force
+          Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $secure | Out-Null
+          Remove-Item $pfx -Force
+
+      - name: Build config from secrets
+        shell: pwsh
+        env:
+          TENANT: ${{ secrets.ENTRA_DRIFT_TENANT_ID }}
+          CLIENT: ${{ secrets.ENTRA_DRIFT_CLIENT_ID }}
+        run: |
+          $cfg = Get-Content Config/EngineConfig.json -Raw | ConvertFrom-Json
+          $cfg.tenant.tenantId = $env:TENANT
+          $cfg.tenant.clientId = $env:CLIENT
+          $cert = Get-ChildItem Cert:\CurrentUser\My | Sort-Object NotAfter -Descending | Select-Object -First 1
+          $cfg.tenant.certificateThumbprint = $cert.Thumbprint
+          $cfg | ConvertTo-Json -Depth 10 | Set-Content Config/EngineConfig.json -Encoding UTF8
+
+      - name: Run collection and assessment
+        shell: pwsh
+        run: |
+          .\Start-EntraDriftEngine.ps1 -Mode Collect
+          .\Start-EntraDriftEngine.ps1 -Mode Assess
+          .\Start-EntraDriftEngine.ps1 -Mode PolicyCheck
+          .\Start-EntraDriftEngine.ps1 -Mode Report
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-reports
+          path: |
+            Reports/HTML/
+            Reports/CSV/
+            Reports/JSON/
+          retention-days: 30

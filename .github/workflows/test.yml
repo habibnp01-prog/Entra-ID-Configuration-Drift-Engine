@@ -1,0 +1,25 @@
+name: Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  pester:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pester and Microsoft.Graph
+        shell: pwsh
+        run: |
+          Install-Module Pester -MinimumVersion 5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+          Install-Module Microsoft.Graph -MinimumVersion 2.0.0 -Force -Scope CurrentUser -AllowClobber
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          $result = Invoke-Pester -Path ./Tests -Output Detailed -PassThru
+          if ($result.FailedCount -gt 0) { exit 1 }
