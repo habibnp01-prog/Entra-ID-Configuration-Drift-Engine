@@ -25,7 +25,7 @@ function Show-EngineBanner {
     Write-Host ""
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host "  Entra-ID Configuration Drift Engine" -ForegroundColor Cyan
-    Write-Host ("  v0.6.0  |  Mode: {0}" -f $Mode) -ForegroundColor Cyan
+    Write-Host ("  v0.7.0  |  Mode: {0}" -f $Mode) -ForegroundColor Cyan
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host ""
 }
@@ -281,6 +281,30 @@ function Invoke-ModeReport {
         HistoryPath  = $histPath
     }
 }
+function Invoke-ModePlan {
+    $jsonDir = Join-Path $root "Reports/JSON"
+    $latestAssessment = Get-ChildItem -Path $jsonDir -Filter "assessment-*.json" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $latestPolicy    = Get-ChildItem -Path $jsonDir -Filter "policycheck-*.json" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+
+    $findings = @()
+    if ($latestAssessment) { $findings += @((Get-Content $latestAssessment.FullName -Raw | ConvertFrom-Json).Findings) }
+    if ($latestPolicy)     { $findings += @((Get-Content $latestPolicy.FullName -Raw | ConvertFrom-Json).Findings) }
+
+    if ($findings.Count -eq 0) {
+        Write-DriftLog -Message "No findings. Run -Mode Assess or -Mode PolicyCheck first." -Level Warning -Component "Plan"
+    }
+
+    $plan = New-DriftRemediationPlan -Findings $findings
+
+    $outDir = Join-Path $root "Reports/JSON"
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $outFile = Join-Path $outDir ("remediation-plan-{0}.json" -f $timestamp)
+    $plan | ConvertTo-Json -Depth 30 | Set-Content -Path $outFile -Encoding UTF8
+    Write-DriftLog -Message ("Remediation plan written: {0}" -f $outFile) -Level Success -Component "Plan"
+    Write-DriftLog -Message ("  {0} action(s): {1} auto, {2} manual" -f $plan.ActionCount, $plan.AutoCount, $plan.ManualCount) -Level Info -Component "Plan"
+
+    return [PSCustomObject]@{ Mode = "Plan"; PlanPath = $outFile; ActionCount = $plan.ActionCount }
+}
 function Invoke-ModeNotImplemented {
     param([string]$ModeName, [string]$Reason)
     Write-DriftLog -Message ("Mode {0} is not implemented yet." -f $ModeName) -Level Warning -Component $ModeName
@@ -300,7 +324,7 @@ $result = switch ($Mode) {
     "PolicyCheck"  { Invoke-ModePolicyCheck }
     "History"      { Invoke-ModeNotImplemented -ModeName "History"     -Reason "History storage arrives in Phase 6." }
     "Report"       { Invoke-ModeReport }
-    "Plan"         { Invoke-ModeNotImplemented -ModeName "Plan"        -Reason "Remediation arrives in Phase 7." }
+    "Plan"         { Invoke-ModePlan }
     "All"          { Invoke-ModeNotImplemented -ModeName "All"         -Reason "Composite mode available after Phase 6." }
 }
 
