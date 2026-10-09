@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Entra Drift Engine Policy Schema",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["version", "policies"],
+  "properties": {
+    "version": { "type": "string" },
+    "policies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "resourceType", "property", "rule", "severity"],
+        "properties": {
+          "id":           { "type": "string", "description": "Stable policy identifier, e.g. POL-CA-001" },
+          "name":         { "type": "string" },
+          "description":  { "type": "string" },
+          "resourceType": { "type": "string", "description": "Which ResourceType this applies to" },
+          "property":     { "type": "string", "description": "Dot path to the property (e.g. State)" },
+          "rule":         { "type": "string", "enum": ["Required", "MustBe", "MustNotBe", "MustBeOneOf", "MustNotBeOneOf", "MustExist"] },
+          "value":        { "description": "Expected value or array for list rules" },
+          "severity":     { "type": "string", "enum": ["Critical", "High", "Medium", "Low", "Info"] },
+          "remediation":  { "type": "string" },
+          "references":   { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "policies": [
+    {
+      "id": "POL-PA-001",
+      "name": "Privileged assignments must be permanently eligible, not active",
+      "description": "Permanent active role assignments violate least-privilege.",
+      "resourceType": "RoleAssignment",
+      "property": "AssignmentType",
+      "rule": "MustBe",
+      "value": "Eligible",
+      "severity": "High",
+      "remediation": "Convert to PIM eligible assignment.",
+      "references": []
+    }
+  ]
+}

@@ -25,7 +25,7 @@ function Show-EngineBanner {
     Write-Host ""
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host "  Entra-ID Configuration Drift Engine" -ForegroundColor Cyan
-    Write-Host ("  v0.3.0  |  Mode: {0}" -f $Mode) -ForegroundColor Cyan
+    Write-Host ("  v0.4.0  |  Mode: {0}" -f $Mode) -ForegroundColor Cyan
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host ""
 }
@@ -138,6 +138,44 @@ function Invoke-ModeAssess {
     return [PSCustomObject]@{ Mode = "Assess"; AssessmentPath = $outFile; FindingCount = $assessment.FindingCount }
 }
 
+function Invoke-ModePolicyCheck {
+    $snapPath = $SnapshotPath
+    if (-not $snapPath) {
+        $latest = Get-LatestSnapshot
+        if (-not $latest) { throw "No snapshot found. Run -Mode Collect first." }
+        $snapPath = $latest.FullName
+        Write-DriftLog -Message ("Using latest snapshot: {0}" -f $snapPath) -Level Info -Component "PolicyCheck"
+    }
+
+    $polPath = $PolicyPath
+    if (-not $polPath) { $polPath = Join-Path $root "Policies" }
+
+    Write-DriftLog -Message ("Loading policies from: {0}" -f $polPath) -Level Info -Component "PolicyCheck"
+    $policies = Import-DriftAllPolicies -PolicyRoot $polPath
+    Write-DriftLog -Message ("Loaded {0} policy rule(s)." -f $policies.Count) -Level Success -Component "PolicyCheck"
+
+    $snapshot = Get-Content $snapPath -Raw | ConvertFrom-Json
+    $resources = @($snapshot.Resources)
+
+    # Load exceptions if file exists
+    $exceptions = @()
+    $excPath = Join-Path $root "Config/Exceptions.json"
+    if (Test-Path $excPath) {
+        $exc = Get-Content $excPath -Raw | ConvertFrom-Json
+        if ($exc.exceptions) { $exceptions = @($exc.exceptions) }
+    }
+
+    Write-DriftLog -Message ("Evaluating {0} policies against {1} resources..." -f $policies.Count, $resources.Count) -Level Info -Component "PolicyCheck"
+    $result = Invoke-DriftPolicyCheck -Resources $resources -Policies $policies -Exceptions $exceptions
+
+    $outDir = Join-Path $root "Reports/JSON"
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $outFile = Join-Path $outDir ("policycheck-{0}.json" -f $timestamp)
+    $result | ConvertTo-Json -Depth 30 | Set-Content -Path $outFile -Encoding UTF8
+    Write-DriftLog -Message ("Policy check written: {0}" -f $outFile) -Level Success -Component "PolicyCheck"
+
+    return [PSCustomObject]@{ Mode = "PolicyCheck"; ReportPath = $outFile; FindingCount = $result.FindingCount }
+}
 function Invoke-ModeNotImplemented {
     param([string]$ModeName, [string]$Reason)
     Write-DriftLog -Message ("Mode {0} is not implemented yet." -f $ModeName) -Level Warning -Component $ModeName
@@ -154,7 +192,7 @@ $result = switch ($Mode) {
     "Collect"      { Invoke-ModeCollect }
     "Baseline"     { Invoke-ModeBaseline }
     "Assess"       { Invoke-ModeAssess }
-    "PolicyCheck"  { Invoke-ModeNotImplemented -ModeName "PolicyCheck" -Reason "Policy engine arrives in Phase 4." }
+    "PolicyCheck"  { Invoke-ModePolicyCheck }
     "History"      { Invoke-ModeNotImplemented -ModeName "History"     -Reason "History storage arrives in Phase 6." }
     "Report"       { Invoke-ModeNotImplemented -ModeName "Report"      -Reason "Reporting arrives in Phase 6." }
     "Plan"         { Invoke-ModeNotImplemented -ModeName "Plan"        -Reason "Remediation arrives in Phase 7." }

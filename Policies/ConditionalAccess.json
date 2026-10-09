@@ -1,0 +1,28 @@
+{
+  "version": "1.0.0",
+  "policies": [
+    {
+      "id": "POL-CA-001",
+      "name": "All CA policies must have an explicit State",
+      "description": "A Conditional Access policy with no State property cannot be evaluated or enforced.",
+      "resourceType": "ConditionalAccessPolicy",
+      "property": "State",
+      "rule": "MustExist",
+      "severity": "High",
+      "remediation": "Ensure the policy has a valid State (enabled, disabled, enabledForReportingButNotEnforced).",
+      "references": ["https://learn.microsoft.com/entra/identity/conditional-access/"]
+    },
+    {
+      "id": "POL-CA-002",
+      "name": "Disabled CA policies should not remain in tenant",
+      "description": "Disabled policies are dead weight and may indicate incomplete rollouts.",
+      "resourceType": "ConditionalAccessPolicy",
+      "property": "State",
+      "rule": "MustNotBe",
+      "value": "disabled",
+      "severity": "Medium",
+      "remediation": "Delete the policy or bring it to an enabled state.",
+      "references": []
+    }
+  ]
+}

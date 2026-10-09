@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "policies": [
+    {
+      "id": "POL-APP-001",
+      "name": "High-impact application permissions must be approved",
+      "description": "Certain Graph permissions grant broad tenant access and should be reviewed.",
+      "resourceType": "ApplicationPermission",
+      "property": "PermissionName",
+      "rule": "MustNotBeOneOf",
+      "value": ["Directory.ReadWrite.All","RoleManagement.ReadWrite.Directory","Application.ReadWrite.All","Mail.ReadWrite","Files.ReadWrite.All"],
+      "severity": "Critical",
+      "remediation": "Justify and approve high-impact permissions. Remove if not required.",
+      "references": ["https://learn.microsoft.com/graph/permissions-reference"]
+    }
+  ]
+}
