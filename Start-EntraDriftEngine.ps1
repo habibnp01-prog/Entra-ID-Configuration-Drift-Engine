@@ -25,7 +25,7 @@ function Show-EngineBanner {
     Write-Host ""
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host "  Entra-ID Configuration Drift Engine" -ForegroundColor Cyan
-    Write-Host ("  v0.4.0  |  Mode: {0}" -f $Mode) -ForegroundColor Cyan
+    Write-Host ("  v0.6.0  |  Mode: {0}" -f $Mode) -ForegroundColor Cyan
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host ""
 }
@@ -237,6 +237,50 @@ function Invoke-ModePolicyCheck {
 
     return [PSCustomObject]@{ Mode = "PolicyCheck"; ReportPath = $outFile; FindingCount = $result.FindingCount }
 }
+function Invoke-ModeReport {
+    # Find latest assessment or policycheck
+    $jsonDir = Join-Path $root "Reports/JSON"
+    $latestAssessment = Get-ChildItem -Path $jsonDir -Filter "assessment-*.json" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $latestPolicy    = Get-ChildItem -Path $jsonDir -Filter "policycheck-*.json" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+
+    $findings = @()
+    $tenantId = "unknown"
+    $baselineVersion = "unknown"
+
+    if ($latestAssessment) {
+        $a = Get-Content $latestAssessment.FullName -Raw | ConvertFrom-Json
+        $findings += @($a.Findings)
+        $tenantId = $a.TenantId
+        $baselineVersion = $a.BaselineVersion
+    }
+    if ($latestPolicy) {
+        $p = Get-Content $latestPolicy.FullName -Raw | ConvertFrom-Json
+        $findings += @($p.Findings)
+    }
+
+    if ($findings.Count -eq 0) {
+        Write-DriftLog -Message "No findings to report. Run -Mode Assess or -Mode PolicyCheck first." -Level Warning -Component "Report"
+    }
+
+    $csvPath  = Join-Path $root ("Reports/CSV/drift-findings-{0}.csv"  -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+    $jsonPath = Join-Path $root ("Reports/JSON/report-{0}.json"        -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+    $htmlPath = Join-Path $root ("Reports/HTML/executive-report-{0}.html" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+    $histPath = Join-Path $root "Reports/JSON/history.json"
+
+    Export-DriftCSV  -Findings $findings -OutputPath $csvPath  | Out-Null
+    Export-DriftJSON -Payload ([PSCustomObject]@{ GeneratedAtUtc = (Get-Date).ToUniversalTime().ToString("o"); TenantId = $tenantId; FindingCount = $findings.Count; Findings = $findings }) -OutputPath $jsonPath | Out-Null
+    Export-DriftHTML -Findings $findings -TenantId $tenantId -OutputPath $htmlPath -BaselineVersion $baselineVersion | Out-Null
+    $history = Add-DriftHistory -Findings $findings -HistoryPath $histPath
+
+    return [PSCustomObject]@{
+        Mode         = "Report"
+        FindingCount = $findings.Count
+        CSV          = $csvPath
+        JSON         = $jsonPath
+        HTML         = $htmlPath
+        HistoryPath  = $histPath
+    }
+}
 function Invoke-ModeNotImplemented {
     param([string]$ModeName, [string]$Reason)
     Write-DriftLog -Message ("Mode {0} is not implemented yet." -f $ModeName) -Level Warning -Component $ModeName
@@ -255,7 +299,7 @@ $result = switch ($Mode) {
     "Assess"       { Invoke-ModeAssess }
     "PolicyCheck"  { Invoke-ModePolicyCheck }
     "History"      { Invoke-ModeNotImplemented -ModeName "History"     -Reason "History storage arrives in Phase 6." }
-    "Report"       { Invoke-ModeNotImplemented -ModeName "Report"      -Reason "Reporting arrives in Phase 6." }
+    "Report"       { Invoke-ModeReport }
     "Plan"         { Invoke-ModeNotImplemented -ModeName "Plan"        -Reason "Remediation arrives in Phase 7." }
     "All"          { Invoke-ModeNotImplemented -ModeName "All"         -Reason "Composite mode available after Phase 6." }
 }
