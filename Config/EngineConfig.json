@@ -1,0 +1,27 @@
+{
+  "version": "0.1.0",
+  "engine": {
+    "name": "Entra-ID-Configuration-Drift-Engine",
+    "logLevel": "Information",
+    "maxCollectionRetries": 3
+  },
+  "tenant": {
+    "tenantId": "REPLACE-WITH-TENANT-ID",
+    "clientId": "REPLACE-WITH-CLIENT-ID",
+    "certificateThumbprint": "REPLACE-WITH-CERT-THUMBPRINT"
+  },
+  "graph": {
+    "baseUrl": "https://graph.microsoft.com/v1.0",
+    "apiVersion": "v1.0"
+  },
+  "paths": {
+    "baselines": "Baselines",
+    "policies": "Policies",
+    "reports": "Reports",
+    "logs": "Logs"
+  },
+  "requiredModules": [
+    { "name": "Microsoft.Graph", "minimumVersion": "2.0.0" },
+    { "name": "Pester", "minimumVersion": "5.0.0" }
+  ]
+}

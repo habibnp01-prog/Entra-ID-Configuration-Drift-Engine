@@ -1,0 +1,15 @@
+{
+  "version": "0.1.0",
+  "severityLevels": {
+    "Critical": { "weight": 10, "color": "#DC2626" },
+    "High":     { "weight": 7,  "color": "#EA580C" },
+    "Medium":   { "weight": 4,  "color": "#CA8A04" },
+    "Low":      { "weight": 2,  "color": "#16A34A" },
+    "Info":     { "weight": 0,  "color": "#2563EB" }
+  },
+  "driftCategories": {
+    "Added":    { "weight": 5 },
+    "Modified": { "weight": 7 },
+    "Removed":  { "weight": 9 }
+  }
+}

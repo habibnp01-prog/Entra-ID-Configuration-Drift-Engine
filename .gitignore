@@ -1,0 +1,13 @@
+Logs/
+Reports/HTML/*.html
+Reports/CSV/*.csv
+Reports/JSON/*.json
+Baselines/*.json
+!Baselines/README.md
+Config/EngineConfig.local.json
+*.cer
+*.pfx
+*.pem
+.vscode/
+.idea/
+_bootstrap.ps1
