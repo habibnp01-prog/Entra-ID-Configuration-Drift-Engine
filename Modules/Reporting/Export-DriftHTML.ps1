@@ -33,7 +33,9 @@ function Export-DriftHTML {
         $exp = if ($null -eq $f.ExpectedValue) { "<em>absent</em>" } else { "$($f.ExpectedValue)" -replace "<","&lt;" -replace ">","&gt;" }
         $obs = if ($null -eq $f.ObservedValue) { "<em>absent</em>" } else { "$($f.ObservedValue)" -replace "<","&lt;" -replace ">","&gt;" }
         $rn  = if ($f.ResourceName) { $f.ResourceName } else { "—" }
-        "<tr><td><code>$($f.FindingId)</code></td><td><span class=""sev"" style=""background:$c"">$($f.Severity)</span></td><td>$($f.Category)</td><td>$rn</td><td><code>$($f.ChangedProperty)</code></td><td>$exp</td><td>$obs</td></tr>"
+        $cat = if ($f.Category)       { $f.Category }       elseif ($f.Rule)     { "Policy" } else { "—" }
+        $prop = if ($f.ChangedProperty) { $f.ChangedProperty } elseif ($f.Property) { $f.Property } else { "—" }
+        "<tr><td><code>$($f.FindingId)</code></td><td><span class=""sev"" style=""background:$c"">$($f.Severity)</span></td><td>$cat</td><td>$rn</td><td><code>$prop</code></td><td>$exp</td><td>$obs</td></tr>"
     }
     $rows = $rows -join "`n"
 
