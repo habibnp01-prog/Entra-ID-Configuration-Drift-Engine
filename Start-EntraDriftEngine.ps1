@@ -75,27 +75,88 @@ function Invoke-ModeTest {
 
 function Invoke-ModeCollect {
     $cfg = Get-Config
-    Write-DriftLog -Message "[1/4] Loading configuration..." -Level Info -Component "Collect"
+    Write-DriftLog -Message "[1/5] Loading configuration..." -Level Info -Component "Collect"
+
     $tenant = if ($TenantId) { $TenantId } else { $cfg.tenant.tenantId }
     if (-not $tenant -or $tenant -like "REPLACE*") { throw "Set tenant.tenantId in Config/EngineConfig.json or pass -TenantId" }
     if (-not $cfg.tenant.clientId -or $cfg.tenant.clientId -like "REPLACE*") { throw "Set tenant.clientId in Config/EngineConfig.json" }
     if (-not $cfg.tenant.certificateThumbprint -or $cfg.tenant.certificateThumbprint -like "REPLACE*") { throw "Set tenant.certificateThumbprint in Config/EngineConfig.json" }
-    Write-DriftLog -Message "[2/4] Authenticating..." -Level Info -Component "Collect"
+
+    Write-DriftLog -Message "[2/5] Authenticating..." -Level Info -Component "Collect"
     Connect-DriftGraph -TenantId $tenant -ClientId $cfg.tenant.clientId -CertificateThumbprint $cfg.tenant.certificateThumbprint | Out-Null
-    Write-DriftLog -Message "[3/4] Collecting resources..." -Level Info -Component "Collect"
-    $rawPolicies = Get-DriftCAPolicies
-    $normalized = @($rawPolicies | ConvertTo-DriftNormalizedResource -ResourceType "ConditionalAccessPolicy")
-    Write-DriftLog -Message ("Normalized {0} resources." -f $normalized.Count) -Level Success -Component "Collect"
-    Write-DriftLog -Message "[4/4] Writing snapshot..." -Level Info -Component "Collect"
-    $snapshot = New-DriftSnapshot -Resources $normalized -TenantId $tenant
+
+    $resources = @()
+    $summary = [ordered]@{}
+
+    try {
+        Write-DriftLog -Message "[3/5] Collecting resources..." -Level Info -Component "Collect"
+
+        # Conditional Access policies
+        try {
+            $ca = ConvertFrom-DriftRawResource -RawResources (Get-DriftCAPolicies) -ResourceType "ConditionalAccessPolicy"
+            $resources += $ca
+            $summary["ConditionalAccessPolicy"] = $ca.Count
+            Write-DriftLog -Message ("  ConditionalAccessPolicy: {0}" -f $ca.Count) -Level Success -Component "Collect"
+        } catch { Write-DriftLog -Message ("  CA policies failed: {0}" -f $_) -Level Warning -Component "Collect"; $summary["ConditionalAccessPolicy"] = "FAILED" }
+
+        # Directory roles
+        try {
+            $roles = ConvertFrom-DriftRawResource -RawResources (Get-DriftDirectoryRoles) -ResourceType "DirectoryRole"
+            $resources += $roles
+            $summary["DirectoryRole"] = $roles.Count
+            Write-DriftLog -Message ("  DirectoryRole: {0}" -f $roles.Count) -Level Success -Component "Collect"
+        } catch { Write-DriftLog -Message ("  Directory roles failed: {0}" -f $_) -Level Warning -Component "Collect"; $summary["DirectoryRole"] = "FAILED" }
+
+        # Role assignments
+        try {
+            $ra = ConvertFrom-DriftRawResource -RawResources (Get-DriftRoleAssignments) -ResourceType "RoleAssignment" -NameProperty "RoleDefinitionId"
+            $resources += $ra
+            $summary["RoleAssignment"] = $ra.Count
+            Write-DriftLog -Message ("  RoleAssignment: {0}" -f $ra.Count) -Level Success -Component "Collect"
+        } catch { Write-DriftLog -Message ("  Role assignments failed: {0}" -f $_) -Level Warning -Component "Collect"; $summary["RoleAssignment"] = "FAILED" }
+
+        # Applications
+        try {
+            $apps = ConvertFrom-DriftRawResource -RawResources (Get-DriftApplications) -ResourceType "Application" -IdProperty "Id"
+            $resources += $apps
+            $summary["Application"] = $apps.Count
+            Write-DriftLog -Message ("  Application: {0}" -f $apps.Count) -Level Success -Component "Collect"
+        } catch { Write-DriftLog -Message ("  Applications failed: {0}" -f $_) -Level Warning -Component "Collect"; $summary["Application"] = "FAILED" }
+
+        # Service principals
+        try {
+            $sps = ConvertFrom-DriftRawResource -RawResources (Get-DriftServicePrincipals) -ResourceType "ServicePrincipal"
+            $resources += $sps
+            $summary["ServicePrincipal"] = $sps.Count
+            Write-DriftLog -Message ("  ServicePrincipal: {0}" -f $sps.Count) -Level Success -Component "Collect"
+        } catch { Write-DriftLog -Message ("  Service principals failed: {0}" -f $_) -Level Warning -Component "Collect"; $summary["ServicePrincipal"] = "FAILED" }
+
+        # OAuth2 grants
+        try {
+            $grants = ConvertFrom-DriftRawResource -RawResources (Get-DriftOAuth2Grants) -ResourceType "OAuth2PermissionGrant" -NameProperty "ClientId"
+            $resources += $grants
+            $summary["OAuth2PermissionGrant"] = $grants.Count
+            Write-DriftLog -Message ("  OAuth2PermissionGrant: {0}" -f $grants.Count) -Level Success -Component "Collect"
+        } catch { Write-DriftLog -Message ("  OAuth2 grants failed: {0}" -f $_) -Level Warning -Component "Collect"; $summary["OAuth2PermissionGrant"] = "FAILED" }
+
+    } finally {
+        Disconnect-DriftGraph | Out-Null
+    }
+
+    Write-DriftLog -Message "[4/5] Writing snapshot..." -Level Info -Component "Collect"
+    $snapshot = New-DriftSnapshot -Resources $resources -TenantId $tenant
+
+    # Attach collection summary to snapshot
+    $snapshot | Add-Member -NotePropertyName "CollectionSummary" -NotePropertyValue ([PSCustomObject]$summary) -Force
+
     $snapDir = Join-Path $root "Reports/JSON"
     $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $snapPath = Join-Path $snapDir ("snapshot-{0}.json" -f $timestamp)
     Export-DriftSnapshot -Snapshot $snapshot -OutputPath $snapPath | Out-Null
-    Disconnect-DriftGraph | Out-Null
-    return [PSCustomObject]@{ Mode = "Collect"; SnapshotPath = $snapPath; Resources = $normalized.Count }
-}
 
+    Write-DriftLog -Message "[5/5] Snapshot complete: $($resources.Count) resources." -Level Success -Component "Collect"
+    return [PSCustomObject]@{ Mode = "Collect"; SnapshotPath = $snapPath; Resources = $resources.Count; Summary = $summary }
+}
 function Invoke-ModeBaseline {
     if (-not $BaselinePath) {
         $latest = Get-LatestSnapshot
