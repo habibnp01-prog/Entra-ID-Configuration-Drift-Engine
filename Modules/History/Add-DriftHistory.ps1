@@ -10,14 +10,13 @@ function Add-DriftHistory {
     $dir = Split-Path $HistoryPath -Parent
     if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 
-    # Load existing history or start fresh
     $history = @()
     if (Test-Path $HistoryPath) {
         try {
             $raw = Get-Content $HistoryPath -Raw | ConvertFrom-Json
             if ($raw.entries) { $history = @($raw.entries) }
         } catch {
-            Write-DriftLog -Message ("Could not parse existing history; starting fresh: {0}" -f $_) -Level Warning -Component "History"
+            Write-DriftLog -Message ("Could not parse existing history: {0}" -f $_) -Level Warning -Component "History"
         }
     }
 
@@ -30,6 +29,7 @@ function Add-DriftHistory {
         if ($existing) {
             $existing.LastDetectedUtc = $now
             $existing.Occurrences = [int]$existing.Occurrences + 1
+            $existing.Status = "Active"
         } else {
             $history += [PSCustomObject]@{
                 FindingId         = $f.FindingId
@@ -47,7 +47,6 @@ function Add-DriftHistory {
         }
     }
 
-    # Mark resolved = previously active, not in current findings
     foreach ($h in $history) {
         if ($h.Status -eq "Active" -and $h.FindingId -notin $activeIds) {
             $h.Status = "Resolved"
@@ -63,7 +62,8 @@ function Add-DriftHistory {
     }
     $payload | ConvertTo-Json -Depth 20 | Set-Content -Path $HistoryPath -Encoding UTF8
 
-    Write-DriftLog -Message ("History updated: {0} entries ({1} active)" -f $history.Count, @($history | Where-Object { $_.Status -eq "Active" }).Count) -Level Success -Component "History"
+    $activeCount = @($history | Where-Object { $_.Status -eq "Active" }).Count
+    Write-DriftLog -Message ("History updated: {0} entries ({1} active)" -f $history.Count, $activeCount) -Level Success -Component "History"
     return $payload
 }
 
