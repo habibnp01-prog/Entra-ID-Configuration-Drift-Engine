@@ -9,9 +9,21 @@ function Get-DriftRoleAssignments {
 
     Write-DriftLog -Message "Fetching directory role assignments..." -Level Info -Component "Collect"
 
-    $assignments = Get-MgRoleManagementDirectoryRoleAssignment -All -ErrorAction Stop
+    $assignments = Get-MgRoleManagementDirectoryRoleAssignment -All -ExpandProperty "Principal" -ErrorAction Stop
     $assignments = @($assignments)
 
-    Write-DriftLog -Message ("Retrieved {0} role assignments." -f $assignments.Count) -Level Success -Component "Collect"
-    return ,$assignments
+    # Enrich each assignment with AssignmentType
+    $enriched = foreach ($a in $assignments) {
+        [PSCustomObject]@{
+            Id               = $a.Id
+            PrincipalId      = $a.PrincipalId
+            RoleDefinitionId = $a.RoleDefinitionId
+            DirectoryScopeId = $a.DirectoryScopeId
+            AssignmentType   = "Active"  # Directory assignments are always active by default
+            AssignmentSource = $a.AssignmentSource
+        }
+    }
+
+    Write-DriftLog -Message ("Retrieved {0} role assignments." -f $enriched.Count) -Level Success -Component "Collect"
+    return ,@($enriched)
 }

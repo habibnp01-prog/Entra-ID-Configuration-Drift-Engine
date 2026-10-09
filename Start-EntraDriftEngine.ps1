@@ -30,7 +30,10 @@ function Show-EngineBanner {
     Write-Host ""
 }
 
-function Get-Config { Get-Content $ConfigPath -Raw | ConvertFrom-Json }
+function Get-Config {
+    # Returns resolved config with tenant, client, and cert resolved dynamically
+    return Get-DriftConfig -ConfigPath $ConfigPath -TenantId $TenantId
+}
 
 function Get-LatestSnapshot {
     $snapDir = Join-Path $root "Reports/JSON"
@@ -77,13 +80,11 @@ function Invoke-ModeCollect {
     $cfg = Get-Config
     Write-DriftLog -Message "[1/5] Loading configuration..." -Level Info -Component "Collect"
 
-    $tenant = if ($TenantId) { $TenantId } else { $cfg.tenant.tenantId }
-    if (-not $tenant -or $tenant -like "REPLACE*") { throw "Set tenant.tenantId in Config/EngineConfig.json or pass -TenantId" }
-    if (-not $cfg.tenant.clientId -or $cfg.tenant.clientId -like "REPLACE*") { throw "Set tenant.clientId in Config/EngineConfig.json" }
-    if (-not $cfg.tenant.certificateThumbprint -or $cfg.tenant.certificateThumbprint -like "REPLACE*") { throw "Set tenant.certificateThumbprint in Config/EngineConfig.json" }
+    # Get-DriftConfig already validated all required fields
+    $tenant = $cfg.TenantId
 
     Write-DriftLog -Message "[2/5] Authenticating..." -Level Info -Component "Collect"
-    Connect-DriftGraph -TenantId $tenant -ClientId $cfg.tenant.clientId -CertificateThumbprint $cfg.tenant.certificateThumbprint | Out-Null
+    Connect-DriftGraph | Out-Null
 
     $resources = @()
     $summary = [ordered]@{}

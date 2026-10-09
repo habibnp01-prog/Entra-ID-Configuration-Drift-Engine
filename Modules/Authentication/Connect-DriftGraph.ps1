@@ -1,29 +1,34 @@
 function Connect-DriftGraph {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)] [string]$TenantId,
-        [Parameter(Mandatory)] [string]$ClientId,
-        [Parameter(Mandatory)] [string]$CertificateThumbprint,
+        [string]$TenantId,
+        [string]$ClientId,
+        [string]$CertificateThumbprint,
+        [string]$CertificateSubject = "CN=EntraDriftEngine",
         [switch]$SkipHealthCheck
     )
 
+    # Resolve config dynamically
+    $resolved = Get-DriftConfig -TenantId $TenantId -ClientId $ClientId `
+                                 -CertificateThumbprint $CertificateThumbprint `
+                                 -CertificateSubject $CertificateSubject
+
     Write-DriftLog -Message "Connecting to Microsoft Graph (app-only)..." -Level Info -Component "Auth"
+    Write-DriftLog -Message ("  Tenant : {0}" -f $resolved.TenantId)   -Level Info -Component "Auth"
+    Write-DriftLog -Message ("  Client : {0}" -f $resolved.ClientId)   -Level Info -Component "Auth"
+    Write-DriftLog -Message ("  Cert   : {0} ({1})" -f $resolved.CertificateThumbprint, $resolved.CertificateSource) -Level Info -Component "Auth"
 
-    $cert = Get-ChildItem "Cert:\CurrentUser\My\$CertificateThumbprint" -ErrorAction SilentlyContinue
-    if (-not $cert) {
-        throw ("Certificate {0} not found in Cert:\CurrentUser\My" -f $CertificateThumbprint)
-    }
-    if (-not $cert.HasPrivateKey) {
-        throw ("Certificate {0} has no private key" -f $CertificateThumbprint)
-    }
-
+    # Disconnect any existing session
     $existing = Get-MgContext -ErrorAction SilentlyContinue
     if ($existing) {
         Write-DriftLog -Message "Disconnecting existing Graph session." -Level Info -Component "Auth"
         Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
     }
 
-    Connect-MgGraph -TenantId $TenantId -ClientId $ClientId -CertificateThumbprint $CertificateThumbprint -NoWelcome -ErrorAction Stop
+    Connect-MgGraph -TenantId $resolved.TenantId `
+                    -ClientId $resolved.ClientId `
+                    -CertificateThumbprint $resolved.CertificateThumbprint `
+                    -NoWelcome -ErrorAction Stop
 
     $ctx = Get-MgContext
     Write-DriftLog -Message ("Connected. Tenant: {0} | AppId: {1} | AuthType: {2}" -f $ctx.TenantId, $ctx.ClientId, $ctx.AuthType) -Level Success -Component "Auth"

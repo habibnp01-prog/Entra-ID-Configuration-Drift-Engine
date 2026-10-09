@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0",
+  "version": "1.0.0",
   "engine": {
     "name": "Entra-ID-Configuration-Drift-Engine",
     "logLevel": "Information",
@@ -8,7 +8,10 @@
   "tenant": {
     "tenantId": "REPLACE-WITH-TENANT-ID",
     "clientId": "REPLACE-WITH-CLIENT-ID",
-    "certificateThumbprint": "REPLACE-WITH-CERT-THUMBPRINT"
+    "certificateThumbprint": ""
+  },
+  "certificate": {
+    "subjectName": "CN=EntraDriftEngine"
   },
   "graph": {
     "baseUrl": "https://graph.microsoft.com/v1.0",
